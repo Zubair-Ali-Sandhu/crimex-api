@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.env
+.venv
+cat > .gitignore << 'EOF'
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.env
+.venv
