@@ -69,6 +69,7 @@ class Config:
         'THEFT', 'ROBBERY', 'HARASSMENT', 'DOMESTIC_VIOLENCE',
         'FRAUD', 'BURGLARY', 'ASSAULT', 'OTHER'
     ]
+    NLP_FLOOR = 0.25  # Minimum NLP cosine similarity — rejects gibberish matches
     VALID_CITIES = [
         'Lahore', 'Faisalabad', 'Gujranwala', 'Multan', 'Sheikhupura', 'Sialkot'
     ]
@@ -345,6 +346,7 @@ async def find_similar_to_existing(request: ExistingCaseRequest):
         mask = np.ones(len(df), dtype=bool)
         mask[query_idx] = False  # Exclude self
         mask &= combined_sim >= request.min_similarity
+        mask &= components['nlp'] >= config.NLP_FLOOR  # Reject matches with gibberish-level NLP similarity
 
         if request.same_city_only:
             mask &= df['city'] == query_row['city']
@@ -423,6 +425,7 @@ async def find_similar_to_new(request: NewCaseRequest):
 
         # Apply filters
         mask = combined_sim >= request.min_similarity
+        mask &= components['nlp'] >= config.NLP_FLOOR  # Reject matches with gibberish-level NLP similarity
 
         if request.same_city_only:
             mask &= df['city'] == request.city
