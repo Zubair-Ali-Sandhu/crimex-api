@@ -101,10 +101,10 @@ async def load_models():
         # Extract temporal features
         df['hour'] = df['incident_date'].dt.hour
         df['day_of_week'] = df['incident_date'].dt.dayofweek
-        df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
-        df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
-        df['dow_sin'] = np.sin(2 * np.pi * df['day_of_week'] / 7)
-        df['dow_cos'] = np.cos(2 * np.pi * df['day_of_week'] / 7)
+        df['hour_sin'] = np.sin(2 * np.pi * df['hour'].astype(np.float64) / 24.0)
+        df['hour_cos'] = np.cos(2 * np.pi * df['hour'].astype(np.float64) / 24.0)
+        df['dow_sin'] = np.sin(2 * np.pi * df['day_of_week'].astype(np.float64) / 7.0)
+        df['dow_cos'] = np.cos(2 * np.pi * df['day_of_week'].astype(np.float64) / 7.0)
 
         # Initialize geo scaler
         geo_scaler = MinMaxScaler()
@@ -204,12 +204,12 @@ def compute_temporal_features(hour: Optional[int], day_of_week: Optional[int]) -
     if day_of_week is None:
         day_of_week = 0  # Default to Monday
 
-    hour_sin = np.sin(2 * np.pi * hour / 24)
-    hour_cos = np.cos(2 * np.pi * hour / 24)
-    dow_sin = np.sin(2 * np.pi * day_of_week / 7)
-    dow_cos = np.cos(2 * np.pi * day_of_week / 7)
+    hour_sin = float(np.sin(2 * np.pi * hour / 24))
+    hour_cos = float(np.cos(2 * np.pi * hour / 24))
+    dow_sin = float(np.sin(2 * np.pi * day_of_week / 7))
+    dow_cos = float(np.cos(2 * np.pi * day_of_week / 7))
 
-    return np.array([hour_sin, hour_cos, dow_sin, dow_cos])
+    return np.array([hour_sin, hour_cos, dow_sin, dow_cos], dtype=np.float64)
 
 
 def compute_similarity_components(
@@ -220,21 +220,28 @@ def compute_similarity_components(
 ) -> Dict[str, np.ndarray]:
     """Compute all similarity components"""
 
+    # Ensure all inputs are pure numpy float64 arrays (fixes numpy 2.x compat)
+    query_embedding = np.asarray(query_embedding, dtype=np.float64)
+    query_coords_normalized = np.asarray(query_coords_normalized, dtype=np.float64)
+    query_temporal = np.asarray(query_temporal, dtype=np.float64)
+    embeddings_f64 = np.asarray(embeddings, dtype=np.float64)
+
     # NLP similarity
-    nlp_sim = cosine_similarity(query_embedding.reshape(1, -1), embeddings).flatten()
+    nlp_sim = cosine_similarity(query_embedding.reshape(1, -1), embeddings_f64).flatten()
 
     # Category similarity
-    cat_sim = (df['category'] == query_category).astype(float).values
+    cat_sim = np.asarray((df['category'] == query_category).astype(float).values, dtype=np.float64)
 
     # Geographic similarity
-    coords_db = df[['lat_normalized', 'lng_normalized']].values
+    coords_db = np.asarray(df[['lat_normalized', 'lng_normalized']].values, dtype=np.float64)
     distances = np.linalg.norm(coords_db - query_coords_normalized, axis=1)
     geo_sim = np.exp(-distances * 5.0)
 
     # Temporal similarity
-    temporal_db = df[['hour_sin', 'hour_cos', 'dow_sin', 'dow_cos']].values
+    temporal_db = np.asarray(df[['hour_sin', 'hour_cos', 'dow_sin', 'dow_cos']].values, dtype=np.float64)
     temp_distances = np.linalg.norm(temporal_db - query_temporal, axis=1)
-    temp_sim = 1 - (temp_distances / np.sqrt(8))
+    max_dist = float(np.sqrt(8.0))  # Convert to Python float to avoid ufunc issues
+    temp_sim = 1.0 - (temp_distances / max_dist)
 
     return {
         'nlp': nlp_sim,
@@ -321,7 +328,7 @@ async def find_similar_to_existing(request: ExistingCaseRequest):
         query_embedding = embeddings[query_idx]
         query_category = query_row['category']
         query_coords = np.array([[query_row['lat_normalized'], query_row['lng_normalized']]])
-        query_temporal = query_row[['hour_sin', 'hour_cos', 'dow_sin', 'dow_cos']].values
+        query_temporal = np.asarray(query_row[['hour_sin', 'hour_cos', 'dow_sin', 'dow_cos']].values, dtype=np.float64)
 
         # Compute similarities
         components = compute_similarity_components(
